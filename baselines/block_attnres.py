@@ -1,0 +1,46 @@
+"""Block Attention Residuals (Block AttnRes): AttnRes (baselines/attnres.py) over block summaries.
+
+The 2L sublayers are cut into ~8 blocks of b = round(2L / 8). Inside a block, sublayer outputs are summed
+into a partial block sum; once the block ends, the sum is frozen. Each sublayer reads a softmax mixture over
+[embedding, frozen block sums..., current partial sum], so the mixing costs O(blocks), not O(L).
+"""
+import torch
+import torch.nn.functional as F
+from torch import nn
+from torch.utils.checkpoint import checkpoint
+
+from model import RMSNorm
+
+NUM_BLOCKS = 8
+
+
+def aggregate(query, *values):
+    stacked = torch.stack(values, dim=-2)  # (B, T, n, D)
+    logits = F.rms_norm(stacked, (stacked.size(-1),)) @ query.type_as(stacked)
+    weights = logits.float().softmax(dim=-1).type_as(stacked)
+    return (weights.unsqueeze(-1) * stacked).sum(dim=-2)
+
+
+def attend(query, values):
+    if torch.is_grad_enabled():
+        return checkpoint(aggregate, query, *values, use_reentrant=False)
+    return aggregate(query, *values)
+
+
+class Residual(nn.Module):
+    def __init__(self, dim: int, num_sublayers: int):
+        super().__init__()
+        self.block_size = max(1, round(num_sublayers / NUM_BLOCKS))
+        self.norms = nn.ModuleList(RMSNorm(dim) for _ in range(num_sublayers))
+        self.queries = nn.Parameter(torch.zeros(num_sublayers + 1, dim))  # last row reads out to the head
+
+    def forward(self, x, sublayers):
+        blocks, partial = [x], None
+        for i, (norm, f) in enumerate(zip(self.norms, sublayers)):
+            sources = blocks if partial is None else blocks + [partial]
+            out = f(norm(attend(self.queries[i], sources)))
+            partial = out if partial is None else partial + out
+            if (i + 1) % self.block_size == 0:
+                blocks, partial = blocks + [partial], None
+        sources = blocks if partial is None else blocks + [partial]
+        return attend(self.queries[-1], sources)
