@@ -18,8 +18,8 @@ sequence length 1024). The tracks differ only in aspect ratio d/L.
 | Track | L × d | Aspect ratio | Heads × dim | Backbone | Target val loss |
 | - | - | - | - | - | - |
 | `reference` (not scored) | 12 × 768 | 64 | 6 × 128 | 84.93M | 3.28 |
-| **`deep`** | 28 × 512 | 18.3 (cf. paper L=42, AR 19.05) | 8 × 64 | 88.08M (+3.7%) | TBD |
-| **`extreme_deep`** | 48 × 384 | 8 (cf. paper L=70, AR 9.14) | 6 × 64 | 84.93M | TBD |
+| **`deep`** | 28 × 512 | 18.3 | 8 × 64 | 88.08M | TBD |
+| **`extreme_deep`** | 48 × 384 | 8 | 6 × 64 | 84.93M | TBD |
 
 Backbone counts the attention and MLP weight matrices that Muon trains, exactly 12·L·d². `deep` uses the round
 shape 28 × 512, which is 3.7% larger than the other two (27 × 512 would match exactly).
