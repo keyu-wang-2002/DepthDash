@@ -121,24 +121,28 @@ The run log records the full command line and prints the `steps` and `lr` actual
 
 ## Rules
 
-1. **Frozen:** `train_gpt.py`, `model.py`, `tracks.py`. A submission is a residual module plus its `--steps`.
-2. **Only the residual path.** The residual treats sublayers as black boxes:
-   - it calls each sublayer exactly once per forward;
-   - it never reads their weights or internals during the forward;
-   - it only operates within each token position (no mixing across the sequence).
-3. **Init.** `init_` may rescale sublayer weights by constants (e.g. a depth-dependent scale). Nothing else.
-4. **Kernels.** Custom kernels and fusions are welcome for the residual's own computation (e.g. a fused HC
-   read/write); they cut the time directly. Keep a plain PyTorch path to check them against.
-   Kernels may not reach into the sublayers.
-5. **Hyperparameters.** Allowed: `--steps`, `--lr`, and AdamW lr and weight decay for the residual's own
-   parameters. Everything else (schedule shape, batch size, betas, embedding/head/scalar lrs, data) is fixed.
-   Tuning across runs is fine; brute-forcing seeds is not.
-6. **Fixed endpoint.** The number of steps and the lr are set before the run starts. Nothing may depend
-   on validation loss (no early stopping, no schedule changes mid-run), and the training run never reads
-   validation data.
-7. **Score:** the training time printed in the `result` line, on 8× H100 SXM. Compile warmup and validation
-   are off the clock. As in modded-nanogpt, the run logs must show at p < 0.01 that the mean final val loss is
-   at or below the track's target. Usually that takes several seeds.
+**Frozen:** `train_gpt.py`, `model.py`, `tracks.py`. That covers the data, the batch size (524,288 tokens/step),
+the backbone, its init, the optimizers, the lr schedule and the evaluation.
+
+**You may change:**
+- **The residual.** Your `Residual` module decides the norms, how sublayer outputs are combined and what reaches
+  the head. Its `init_` may rescale sublayer weights by constants.
+- **Kernels.** You may write custom Triton/CUDA kernels and fusions for the residual's own computation.
+  Keep a plain PyTorch path to check them against.
+- **Hyperparameters.** You may set `--steps`, `--lr` (the Muon lr of the sublayer matrices), and the AdamW lr
+  and weight decay of the residual's own parameters (`optim_groups`).
+- **Execution.** `--microbatch`, `--checkpoint` and `--compile` change speed and memory, not the math.
+
+**Constraints:**
+- Sublayers are black boxes. Call each one exactly once per forward and never read its weights or internals.
+  Kernels may not reach into them either.
+- The residual works per token. It may not mix positions within a sequence or sequences within a batch.
+- Steps and lr are fixed before the run. Nothing may depend on val loss, and training never reads validation data.
+- Tune as much as you like across runs. Do not cherry-pick seeds.
+
+**Score:** the `train_time` in the `result` line, on 8× H100 SXM. Compile warmup and validation are off the
+clock. The logs must show at p < 0.01 that the mean final val loss is at or below the track's target. That
+usually takes several seeds.
 
 To submit, add `records/<track>/<YYYY-MM-DD>_<Name>/` with:
 - the residual module (entry file, helpers, kernels);
