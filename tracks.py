@@ -46,5 +46,5 @@ TRACKS = {
     # AR 18.3, cf. the paper's L=42 (AR 19.05).
     "deep":         Track(num_layers=28, model_dim=512, head_dim=64, steps=None, lr=0.025, target=None, microbatch=32),
     # AR 8, cf. the paper's L=70 (AR 9.14).
-    "extreme_deep": Track(num_layers=48, model_dim=384, head_dim=64, steps=None, lr=0.025, target=None, microbatch=16),
+    "extreme_deep": Track(num_layers=48, model_dim=384, head_dim=64, steps=None, lr=0.025, target=None, microbatch=32),
 }
