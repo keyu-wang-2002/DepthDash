@@ -2,8 +2,8 @@
 
 Every shape has (nearly) the same backbone, 12 * L * d^2 ~= 85M parameters (attention 4d^2 + MLP 8d^2 per layer),
 so the tracks differ only in aspect ratio d/L. This is the iso-backbone setting of the DepthBench paper.
-`reference` and `extreme_deep` are exactly 84.93M. `deep` takes the round shape 28 x 512 at 88.08M (+3.7%);
-27 x 512 would match exactly.
+`reference` and `extreme_deep` are exactly 84.93M. `deep` takes the round shape L28 d512 at 88.08M (+3.7%);
+L27 d512 would match exactly.
 
 Scoring is time-to-target, as in modded-nanogpt: the fastest training run whose final val loss reaches the
 track's target. Each target is calibrated from Pre-LN trained for CALIBRATION_BUDGET seconds (see README), so

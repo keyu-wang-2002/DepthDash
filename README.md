@@ -15,14 +15,14 @@ count and learning rate, and competes to reach the track's target val loss in th
 Every track has nearly the same backbone (12·L·d² = 85–88M parameters, FineWeb, GPT-2 tokens, 524,288 tokens/step,
 sequence length 1024). The tracks differ only in aspect ratio d/L.
 
-| Track | L × d | Aspect ratio | Heads × dim | Backbone | Target val loss |
+| Track | Shape | Aspect ratio | Heads × dim | Backbone | Target val loss |
 | - | - | - | - | - | - |
-| `reference` (not scored) | 12 × 768 | 64 | 6 × 128 | 84.93M | 3.28 |
-| **Track 1: `deep`** | 28 × 512 | 18.3 | 8 × 64 | 88.08M | TBD |
-| **Track 2: `extreme_deep`** | 48 × 384 | 8 | 6 × 64 | 84.93M | TBD |
+| `reference` (not scored) | L12 d768 | 64 | 6 × 128 | 84.93M | 3.28 |
+| **Track 1: `deep`** | L28 d512 | 18.3 | 8 × 64 | 88.08M | TBD |
+| **Track 2: `extreme_deep`** | L48 d384 | 8 | 6 × 64 | 84.93M | TBD |
 
 Backbone counts the attention and MLP weight matrices that Muon trains, exactly 12·L·d². `deep` uses the round
-shape 28 × 512, which is 3.7% larger than the other two (27 × 512 would match exactly).
+shape L28 d512, which is 3.7% larger than the other two (L27 d512 would match exactly).
 The train log prints `backbone_params`, `residual_params` and `total_params` for every run.
 
 `reference` is upstream track 3's baseline shape. Pre-LN should reproduce upstream's 3.28 in 3250 steps there,
@@ -33,7 +33,7 @@ which makes it a regression check for the trainer.
 A shallow target would reward residuals that converge fast early but stall. So each target is set where Pre-LN
 ends a full 10-minute run:
 1. Run `baselines/preln.py` with `--budget 600` (several seeds) to find the step count N that fits in 10 minutes.
-2. Sweep Pre-LN's `--lr` at `--steps N`. The backbone lr was tuned for 12 × 768, and an untuned baseline would
+2. Sweep Pre-LN's `--lr` at `--steps N`. The backbone lr was tuned for L12 d768, and an untuned baseline would
    make later records look better than they are.
 3. Run Pre-LN at the best lr with `--steps N` (several seeds). Set the target to its mean final val loss,
    rounded up to a value it reaches reliably.
@@ -154,12 +154,12 @@ there.
 
 ## Leaderboard
 
-### Track 1: deep (28 × 512)
+### Track 1: deep (L28 d512)
 
 | # | Time | Val loss (mean, n) | Steps | Residual | Date | Log | Contributors |
 | - | - | - | - | - | - | - | - |
 
-### Track 2: extreme_deep (48 × 384)
+### Track 2: extreme_deep (L48 d384)
 
 | # | Time | Val loss (mean, n) | Steps | Residual | Date | Log | Contributors |
 | - | - | - | - | - | - | - | - |
