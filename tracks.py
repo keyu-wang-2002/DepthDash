@@ -44,7 +44,7 @@ TRACKS = {
     # Upstream track 3's baseline shape: Pre-LN reaches 3.28 in 3250 steps. A regression check, not scored.
     "reference":    Track(num_layers=12, model_dim=768, head_dim=128, steps=3250, lr=0.025, target=3.28, microbatch=64),
     # AR 18.3, cf. the paper's L=42 (AR 19.05).
-    "deep":         Track(num_layers=28, model_dim=512, head_dim=64, steps=None, lr=0.025, target=None, microbatch=32),
+    "deep":         Track(num_layers=28, model_dim=512, head_dim=64, steps=None, lr=0.025, target=None, microbatch=64),
     # AR 8, cf. the paper's L=70 (AR 9.14).
-    "extreme_deep": Track(num_layers=48, model_dim=384, head_dim=64, steps=None, lr=0.025, target=None, microbatch=32),
+    "extreme_deep": Track(num_layers=48, model_dim=384, head_dim=64, steps=None, lr=0.025, target=None, microbatch=64),
 }
