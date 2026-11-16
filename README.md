@@ -18,8 +18,8 @@ sequence length 1024). The tracks differ only in aspect ratio d/L.
 | Track | L × d | Aspect ratio | Heads × dim | Backbone | Target val loss |
 | - | - | - | - | - | - |
 | `reference` (not scored) | 12 × 768 | 64 | 6 × 128 | 84.93M | 3.28 |
-| **`deep`** | 28 × 512 | 18.3 | 8 × 64 | 88.08M | TBD |
-| **`extreme_deep`** | 48 × 384 | 8 | 6 × 64 | 84.93M | TBD |
+| **Track 1: `deep`** | 28 × 512 | 18.3 | 8 × 64 | 88.08M | TBD |
+| **Track 2: `extreme_deep`** | 48 × 384 | 8 | 6 × 64 | 84.93M | TBD |
 
 Backbone counts the attention and MLP weight matrices that Muon trains, exactly 12·L·d². `deep` uses the round
 shape 28 × 512, which is 3.7% larger than the other two (27 × 512 would match exactly).
@@ -49,7 +49,6 @@ All runs use one node with 8× NVIDIA H100 SXM.
 ```bash
 pip install -r requirements.txt
 python data/cached_fineweb10B.py 40          # 4B training tokens + the validation shard
-./run.sh --track reference --residual baselines/preln.py --steps 3250 --lr 0.025 --seed 0   # regression check: ~3.28
 ./run.sh --track deep --residual baselines/hc.py --steps 3000 --lr 0.025 --seed 0
 ```
 
@@ -151,12 +150,12 @@ there.
 
 ## Leaderboard
 
-### deep (28 × 512)
+### Track 1: deep (28 × 512)
 
 | # | Time | Val loss (mean, n) | Steps | Residual | Date | Log | Contributors |
 | - | - | - | - | - | - | - | - |
 
-### extreme_deep (48 × 384)
+### Track 2: extreme_deep (48 × 384)
 
 | # | Time | Val loss (mean, n) | Steps | Residual | Date | Log | Contributors |
 | - | - | - | - | - | - | - | - |
