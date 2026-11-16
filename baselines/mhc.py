@@ -5,14 +5,25 @@ is projected onto doubly-stochastic matrices by 20 Sinkhorn-Knopp iterations (in
 come from RMSNorm of the flattened 4 streams. The streams are averaged at the end.
 Ported from nanogpt-lab (records/20261011_mhc_hc_depth).
 
+On CUDA the connection runs as Liger-Kernel's fused Triton mHC kernels (coefficients + Sinkhorn, read,
+write), as in DepthBench. Elsewhere, or with FUSED = False, the plain PyTorch path below runs.
+fused/check_fused.py compares the two.
+
 compile_mode = "sublayer": a whole-model graph with 20 Sinkhorn iterations per sublayer is too large to compile.
-The connection math is two pure functions with the same shapes at every sublayer, so each compiles once.
+The plain connection math is two pure functions with the same shapes at every sublayer, so each compiles once.
 """
 import torch
 import torch.nn.functional as F
 from torch import nn
 
 from model import RMSNorm
+
+try:
+    from liger_kernel.transformers.functional import liger_mhc_coeffs, liger_mhc_post_res, liger_mhc_pre
+except ImportError:  # no liger-kernel: plain PyTorch only
+    liger_mhc_coeffs = None
+
+FUSED = liger_mhc_coeffs is not None  # set False to run the plain PyTorch reference
 
 STREAMS = 4
 SINKHORN_ITERATIONS = 20
@@ -59,6 +70,12 @@ class ManifoldHyperConnection(nn.Module):
         self.bias = nn.Parameter(torch.cat((read, torch.zeros(STREAMS), residual.flatten())))
 
     def forward(self, x, f, norm):
+        if FUSED and x.is_cuda:
+            # Liger's same Sinkhorn (row-softmax, then 20 row/column normalizations) yields our A[source, dest];
+            # its write takes h_res[dest, source], hence the transpose.
+            pre, post, hres = liger_mhc_coeffs(x, self.dynamic, self.bias, *self.scales.unbind(),
+                                               tmax=SINKHORN_ITERATIONS, rms_eps=1e-6, post_mult=2.0)
+            return liger_mhc_post_res(x, f(norm(liger_mhc_pre(x, pre))), post, hres.mT)
         branch_input, post, hres = mhc_read(x, self.dynamic, self.scales, self.bias)
         return mhc_write(x, f(norm(branch_input)), post, hres)
 

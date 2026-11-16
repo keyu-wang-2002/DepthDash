@@ -128,7 +128,7 @@ the backbone, its init, the optimizers, the lr schedule and the evaluation.
 - **The residual.** Your `Residual` module decides the norms, how sublayer outputs are combined and what reaches
   the head. Its `init_` may rescale sublayer weights by constants.
 - **Kernels.** You may write custom Triton/CUDA kernels and fusions for the residual's own computation.
-  Keep a plain PyTorch path to check them against.
+  Keep a plain PyTorch path to check them against (see `baselines/fused/check_fused.py`).
 - **Hyperparameters.** You may set `--steps`, `--lr` (the Muon lr of the sublayer matrices), and the AdamW lr
   and weight decay of the residual's own parameters (`optim_groups`).
 - **Execution.** `--microbatch`, `--checkpoint` and `--compile` change speed and memory, not the math.
@@ -170,7 +170,8 @@ there.
 train_gpt.py     frozen: data loader, Muon, optimizer groups, init, warmup, timed training loop, validation, logging
 model.py         frozen: RMSNorm, attention, MLP, GPT (embed -> residual -> head)
 tracks.py        frozen: track shapes, calibrated step counts and targets
-baselines/       reference residuals, one self-contained file each
+baselines/       reference residuals, one entry file each
+baselines/fused/ Triton kernels for AttnRes (from DepthBench) + check_fused.py; mHC uses Liger-Kernel's
 records/         submissions per track
 data/            FineWeb 10B (GPT-2 tokens) downloader
 ```
