@@ -28,20 +28,6 @@ The train log prints `backbone_params`, `residual_params` and `total_params` for
 `reference` is upstream track 3's baseline shape. Pre-LN should reproduce upstream's 3.28 in 3250 steps there,
 which makes it a regression check for the trainer.
 
-### Calibrating the targets
-
-A shallow target would reward residuals that converge fast early but stall. So each target is set where Pre-LN
-ends a full 10-minute run:
-1. Run `baselines/preln.py` with `--budget 600` (several seeds) to find the step count N that fits in 10 minutes.
-2. Sweep Pre-LN's `--lr` at `--steps N`. The backbone lr was tuned for L12 d768, and an untuned baseline would
-   make later records look better than they are.
-3. Run Pre-LN at the best lr with `--steps N` (several seeds). Set the target to its mean final val loss,
-   rounded up to a value it reaches reliably.
-4. Record N and that lr as the track's default `steps` and `lr`. The tuned Pre-LN is record #1 at about 10:00.
-
-Each track has its own target, so times compare within a track, not across tracks. To compare depths
-directly, run every track for the same `--budget` and compare final losses.
-
 ## Quickstart
 
 All runs use one node with 8× NVIDIA H100 SXM.
