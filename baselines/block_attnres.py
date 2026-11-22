@@ -4,8 +4,8 @@ The 2L sublayers are cut into ~8 blocks of b = round(2L / 8). Inside a block, su
 into a partial block sum; once the block ends, the sum is frozen. Each sublayer reads a softmax mixture over
 [embedding, frozen block sums..., current partial sum], so the mixing costs O(blocks), not O(L).
 
-On CUDA, each read and the pre-norm behind it run as one fused Triton kernel (fused/attnres.py, from
-DepthBench); elsewhere, or with FUSED = False, the plain PyTorch path below runs.
+This is the plain PyTorch reference. baselines/fast/block_attnres.py is the fast model, with DepthBench's fused
+Triton kernel.
 """
 import torch
 import torch.nn.functional as F
@@ -14,12 +14,6 @@ from torch.utils.checkpoint import checkpoint
 
 from model import RMSNorm
 
-try:
-    from fused.attnres import fused_attnres
-except ImportError:  # no Triton: plain PyTorch only
-    fused_attnres = None
-
-FUSED = fused_attnres is not None  # set False to run the plain PyTorch reference
 NUM_BLOCKS = 8
 
 
@@ -30,22 +24,13 @@ def aggregate(query, key_gains, *values):
     return (weights.unsqueeze(-1) * stacked).sum(dim=-2)
 
 
-def read(query, key_gains, values, norm=None):
-    """The softmax mixture of values, followed by norm (the next sublayer's pre-norm) if given."""
-    if FUSED and values[0].is_cuda:
-        return fused_attnres(query, values, key_gains, None if norm is None else norm.gains,
-                             rms_eps=torch.finfo(values[0].dtype).eps)  # F.rms_norm's default eps
+def read(query, key_gains, values):
     if torch.is_grad_enabled():
-        h = checkpoint(aggregate, query, key_gains, *values, use_reentrant=False)
-    else:
-        h = aggregate(query, key_gains, *values)
-    return h if norm is None else norm(h)
+        return checkpoint(aggregate, query, key_gains, *values, use_reentrant=False)
+    return aggregate(query, key_gains, *values)
 
 
 class Residual(nn.Module):
-    # the fused kernel runs eagerly between the compiled sublayers
-    compile_mode = "sublayer" if FUSED else "model"
-
     def __init__(self, dim: int, num_sublayers: int):
         super().__init__()
         self.block_size = max(1, round(num_sublayers / NUM_BLOCKS))
@@ -58,7 +43,7 @@ class Residual(nn.Module):
         blocks, partial = [x], None
         for i, (norm, f) in enumerate(zip(self.norms, sublayers)):
             sources = blocks if partial is None else blocks + [partial]
-            out = f(read(self.queries[i], self.key_gains[i], sources, norm))
+            out = f(norm(read(self.queries[i], self.key_gains[i], sources)))
             partial = out if partial is None else partial + out
             if (i + 1) % self.block_size == 0:
                 blocks, partial = blocks + [partial], None

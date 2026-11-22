@@ -10,7 +10,7 @@
 
 Changes from DepthBench: the few fla helpers are inlined (no `fla` dependency), and the number of sources L is a
 runtime argument (autotuned per power-of-two bucket BL), so Full AttnRes compiles a handful of kernels instead of
-one per depth. The math is unchanged. baselines/attnres.py keeps the plain PyTorch path to check it against.
+one per depth. The math is unchanged. Used by baselines/fast/attnres.py and baselines/fast/block_attnres.py.
 """
 from __future__ import annotations
 

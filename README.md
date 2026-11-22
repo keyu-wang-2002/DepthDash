@@ -66,6 +66,7 @@ Flags:
 - `--microbatch N`: sequences per forward per GPU. Lower it if you run out of memory.
 - `--checkpoint`: activation checkpointing of every sublayer.
 - `--compile {auto,model,sublayer,none}`
+- `--model PATH`: a fast model that computes the same function as the residual (see [Fast models](#fast-models)).
 - `--budget SECONDS`: train for a fixed time with a time-based lr schedule, as in Parameter Golf. This is for
   target calibration and depth-scaling diagnostics; such runs are marked `record_run:False`.
 
@@ -89,6 +90,41 @@ Pre-LN is just `for norm, f in zip(self.norms, sublayers): x = x + f(norm(x))`.
 Optional hooks (also documented in [`baselines/preln.py`](baselines/preln.py)):
 - `init_(sublayers)`: rescaling of sublayer weights at init
 - `compile_mode`: `"model"` (default) or `"sublayer"`, for residuals whose whole-model graph is too large to compile
+
+### Fast models
+
+A submission has a reference implementation and, optionally, a fast implementation.
+
+- **Reference implementation:** the `Residual`, written in plain PyTorch with the sublayers as black boxes.
+  It defines the math.
+- **Fast implementation** (`--model`): an entry file defining `class GPT(model.GPT)` that overrides `forward`.
+  It may compute the function any way it likes. For example, it may fuse one sublayer's write with the next
+  one's read, fold a pre-norm into the QKV matmul, use custom Triton/CUDA kernels, or use libraries such as
+  Liger-Kernel.
+
+**The fast implementation must be mathematically identical to the reference.** Only rounding may differ: no
+approximations, no changed constants, no lower-precision tricks such as FP8. It also keeps the reference's
+parameters (names and shapes), so init and optimizer groups stay the same.
+
+We provide [`check_equivalence.py`](check_equivalence.py) as a rough check, not a proof:
+
+```bash
+python check_equivalence.py --track deep --residual <dir>/residual.py --model <dir>/fast_model.py
+./run.sh --track deep --residual <dir>/residual.py --model <dir>/fast_model.py --steps N --lr LR --seed 0
+```
+
+The check runs both on one GPU in fp32 (TF32 off) from the same weights, at the init and at a few random draws,
+and compares every gradient. A correct implementation differs by ~1e-6 there. The tolerances (1e-4 for the
+gradients overall, 1e-2 per tensor) are far above that, so a correct fast implementation passes, while a wrong
+scale, a missing transpose or a detached input fails. Differences far below the tolerances, such as a changed
+epsilon, can slip through. That is fine: the rules are a gentlemen's agreement, and the check is there to catch
+honest mistakes. For it to work, a fast implementation must also run in fp32, so write kernels for the input
+dtype rather than hard-coding bf16.
+
+[`baselines/fast/`](baselines/fast) has fast implementations of the baselines:
+- `attnres.py` and `block_attnres.py` use DepthBench's fused Triton kernel;
+- `mhc.py` uses Liger-Kernel;
+- `preln.py` is a minimal example that folds each pre-norm gain into the next sublayer's input projections.
 
 ### Steps and learning rate
 
@@ -121,21 +157,24 @@ The run log records the full command line and prints the `steps` and `lr` actual
 
 ## Rules
 
-**Frozen:** `train_gpt.py`, `model.py`, `tracks.py`. That covers the data, the batch size (524,288 tokens/step),
-the backbone, its init, the optimizers, the lr schedule and the evaluation.
+**Frozen:** `train_gpt.py`, `model.py`, `tracks.py`, `check_equivalence.py`. That covers the data, the batch size
+(524,288 tokens/step), the backbone, its init, the optimizers, the lr schedule and the evaluation.
 
 **You may change:**
 - **The residual.** Your `Residual` module decides the norms, how sublayer outputs are combined and what reaches
   the head. Its `init_` may rescale sublayer weights by constants.
-- **Kernels.** You may write custom Triton/CUDA kernels and fusions for the residual's own computation.
-  Keep a plain PyTorch path to check them against (see `baselines/fused/check_fused.py`).
+- **The implementation.** You may use custom Triton/CUDA kernels and fusions, inside the residual or in a fast
+  model (`--model`) that crosses the sublayer boundary, as long as it passes `check_equivalence.py`.
 - **Hyperparameters.** You may set `--steps`, `--lr` (the Muon lr of the sublayer matrices), and the AdamW lr
   and weight decay of the residual's own parameters (`optim_groups`).
 - **Execution.** `--microbatch`, `--checkpoint` and `--compile` change speed and memory, not the math.
 
+**Not allowed:** changing what the sublayers compute, e.g. value residuals or attention over earlier layers' keys
+and values (MoDA). The reference `Residual` must be expressible with black-box sublayers.
+
 **Constraints:**
-- Sublayers are black boxes. Call each one exactly once per forward and never read its weights or internals.
-  Kernels may not reach into them either.
+- In the reference `Residual`, sublayers are black boxes. It calls each one exactly once per forward, in order,
+  and never reads their weights or internals. A fast model may reach in, but only to compute the same function.
 - The residual works per token. It may not mix positions within a sequence or sequences within a batch.
 - Steps and lr are fixed before the run. Nothing may depend on val loss, and training never reads validation data.
 - Tune as much as you like across runs. Do not cherry-pick seeds.
@@ -145,8 +184,10 @@ clock. The logs must show at p < 0.01 that the mean final val loss is at or belo
 usually takes several seeds.
 
 To submit, add `records/<track>/<YYYY-MM-DD>_<Name>/` with:
-- the residual module (entry file, helpers, kernels);
-- the logs of all seeds, run with `--residual records/<track>/<YYYY-MM-DD>_<Name>/<entry>.py --steps N --lr LR`;
+- the residual module (entry file, helpers, kernels), and the fast model if you use one;
+- the logs of all seeds, run with `--residual records/<track>/<YYYY-MM-DD>_<Name>/<entry>.py --steps N --lr LR`
+  (plus `--model ...`);
+- with a fast model, the output of `check_equivalence.py`;
 - a short README with the time, the mean val loss and the p-value against the target.
 
 The log embeds the entry file, every module it imported from its directory, and any `.cu/.cuh/.cpp/.h` sources
@@ -170,8 +211,10 @@ there.
 train_gpt.py     frozen: data loader, Muon, optimizer groups, init, warmup, timed training loop, validation, logging
 model.py         frozen: RMSNorm, attention, MLP, GPT (embed -> residual -> head)
 tracks.py        frozen: track shapes, calibrated step counts and targets
-baselines/       reference residuals, one entry file each
-baselines/fused/ Triton kernels for AttnRes (from DepthBench) + check_fused.py; mHC uses Liger-Kernel's
+check_equivalence.py  frozen: checks that a fast model (--model) computes the same function as its reference
+baselines/       reference residuals: the plain PyTorch math, one entry file each
+baselines/fast/  fast models with kernels (--model): attnres and block_attnres (Triton kernel from
+                 DepthBench), mhc (Liger-Kernel), preln (a minimal example)
 records/         submissions per track
 data/            FineWeb 10B (GPT-2 tokens) downloader
 ```

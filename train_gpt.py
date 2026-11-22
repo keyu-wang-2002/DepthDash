@@ -2,9 +2,11 @@
 
 Launch: torchrun --standalone --nproc_per_node=8 train_gpt.py --track deep --residual baselines/hc.py --steps 3000
 
-This file, model.py and tracks.py are frozen (data, backbone, init, optimizer, schedule, evaluation).
-A submission is a residual module (an entry file defining class Residual, optionally with helper modules and
-custom kernels next to it) plus the number of steps it trains for. See baselines/preln.py for the interface.
+This file, model.py, tracks.py and check_equivalence.py are frozen (data, backbone, init, optimizer, schedule,
+evaluation). A submission is a residual module (an entry file defining class Residual, optionally with helper
+modules and custom kernels next to it) plus its --steps and --lr. See baselines/preln.py for the interface.
+The Residual is the reference: it defines the math. A submission may also bring a fast model (--model), a
+`class GPT(model.GPT)` that computes the same function any way it likes, verified by check_equivalence.py.
 The score is the training time (compile warmup and validation off the clock) of a run whose final val loss
 reaches the track's target, as in modded-nanogpt. --budget instead trains for a fixed time, as in
 openai/parameter-golf; that is for depth-scaling diagnostics and target calibration, not for records.
@@ -186,23 +188,43 @@ def set_lr(optimizers, progress: float):
 
 KERNEL_SOURCE_SUFFIXES = (".cu", ".cuh", ".cpp", ".h")
 
-def load_residual(path: str):
-    """Import the residual's entry file. Its directory goes on sys.path, so a submission can keep helpers and
-    custom kernels in sibling modules. Returns the Residual class and every source file of the submission
-    (the entry, the modules it imported from its directory, and any C++/CUDA sources there) for the log."""
+def load_entry(path: str, name: str):
+    """Import a submission's entry file, which defines class `name`. Its directory goes on sys.path, so a
+    submission can keep helpers and custom kernels in sibling modules. Returns the class and every source file
+    of the submission (the entry, the modules it imported from its directory, and any C++/CUDA sources there)
+    for the log."""
     entry = Path(path).resolve()
     directory = entry.parent
     sys.path.insert(0, str(directory))
     before = set(sys.modules)
-    spec = importlib.util.spec_from_file_location("residual", entry)
+    spec = importlib.util.spec_from_file_location(name.lower(), entry)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    assert hasattr(module, "Residual"), f"{path} must define class Residual"
+    assert hasattr(module, name), f"{path} must define class {name}"
     imported = {Path(m.__file__).resolve() for name, m in sys.modules.items()
                 if name not in before and getattr(m, "__file__", None)}
     files = [entry] + sorted(f for f in imported if f.is_relative_to(directory) and f != entry)
     files += sorted(f for f in directory.rglob("*") if f.suffix in KERNEL_SOURCE_SUFFIXES)
-    return module.Residual, files
+    return getattr(module, name), files
+
+def load_residual(path: str):
+    return load_entry(path, "Residual")
+
+def load_model(path):
+    """The model class: the frozen GPT, or a submission's fast `class GPT(model.GPT)`."""
+    if path is None:
+        return GPT, []
+    model_cls, files = load_entry(path, "GPT")
+    assert issubclass(model_cls, GPT), f"{path} must define class GPT as a subclass of model.GPT"
+    return model_cls, files
+
+def check_same_parameters(model: GPT, reference: GPT):
+    """A fast model keeps the reference's parameters (names and shapes), so init and optimizer groups match."""
+    ours = {n: tuple(p.shape) for n, p in model.named_parameters()}
+    theirs = {n: tuple(p.shape) for n, p in reference.named_parameters()}
+    assert ours == theirs, ("the fast model's parameters differ from the reference's: "
+                            f"extra {sorted(ours.keys() - theirs.keys())}, missing {sorted(theirs.keys() - ours.keys())}, "
+                            f"reshaped {sorted(n for n in ours.keys() & theirs.keys() if ours[n] != theirs[n])}")
 
 @torch.no_grad()
 def init_backbone_(model: GPT):
@@ -271,6 +293,8 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--track", choices=TRACKS, default="deep")
     parser.add_argument("--residual", default="baselines/preln.py", help="entry file defining class Residual")
+    parser.add_argument("--model", help="optional fast model: entry file defining class GPT(model.GPT) that computes"
+                        " the same function as the reference; must pass check_equivalence.py")
     parser.add_argument("--trials", type=int, default=1)
     parser.add_argument("--seed", type=int, help="seed for trial 0; trial i uses seed + i")
     parser.add_argument("--val-every", type=int, default=0, help="validate every N steps (off the clock); 0 = final only")
@@ -285,7 +309,7 @@ def parse_args():
     parser.add_argument("--microbatch", type=int, help="sequences per forward per GPU (default: the track's)")
     parser.add_argument("--checkpoint", action="store_true", help="activation checkpointing of each sublayer")
     parser.add_argument("--compile", choices=["auto", "model", "sublayer", "none"], default="auto",
-                        help="auto = the residual's compile_mode, else 'model'")
+                        help="auto = the fast model's or the residual's compile_mode, else 'model'")
     return parser.parse_args()
 
 def main():
@@ -299,8 +323,9 @@ def main():
     lr = args.lr or track.lr
     mbs = args.microbatch or track.microbatch
     residual_cls, residual_files = load_residual(args.residual)
+    model_cls, model_files = load_model(args.model)
     sources = {name: (ROOT / name).read_text() for name in ("train_gpt.py", "model.py", "tracks.py")}
-    sources.update({os.path.relpath(f): f.read_text() for f in residual_files})
+    sources.update({os.path.relpath(f): f.read_text() for f in residual_files + model_files})
 
     # torchrun sets these env variables
     device = torch.device("cuda", int(os.environ["LOCAL_RANK"]))
@@ -337,16 +362,21 @@ def main():
 
     if args.seed is not None:
         torch.manual_seed(args.seed)
-    model = GPT(VOCAB_SIZE, track.num_layers, track.model_dim, track.head_dim, residual_cls).cuda()
+    shape = (VOCAB_SIZE, track.num_layers, track.model_dim, track.head_dim, residual_cls)
+    if model_cls is not GPT:
+        check_same_parameters(model_cls(*shape), GPT(*shape))
+    model = model_cls(*shape).cuda()
     model.activation_checkpointing = args.checkpoint
     residual_init_state = copy.deepcopy(model.residual.state_dict())
-    compile_mode = getattr(residual_cls, "compile_mode", "model") if args.compile == "auto" else args.compile
+    default_compile = getattr(model_cls, "compile_mode", None) or getattr(residual_cls, "compile_mode", "model")
+    compile_mode = default_compile if args.compile == "auto" else args.compile
     compile_model(model, compile_mode)
 
     residual_params = sum(p.numel() for p in model.residual.parameters())
     backbone_params = sum(p.numel() for p in muon_params(model))
     limit = f"steps:{steps}" if steps else f"budget:{budget:.0f}s"
-    print0(f"track:{args.track} layers:{track.num_layers} dim:{track.model_dim} aspect_ratio:{track.aspect_ratio:.2f}"
+    model_name = args.model or "model.py"
+    print0(f"track:{args.track} model:{model_name} layers:{track.num_layers} dim:{track.model_dim} aspect_ratio:{track.aspect_ratio:.2f}"
            + f" backbone_params:{backbone_params} residual_params:{residual_params}"
            + f" total_params:{sum(p.numel() for p in model.parameters())} compile:{compile_mode} {limit}"
            + f" lr:{lr}"
@@ -433,7 +463,7 @@ def main():
         peak_mem = torch.tensor(torch.cuda.max_memory_allocated(device), dtype=torch.float64, device=device)
         dist.all_reduce(peak_mem, op=dist.ReduceOp.MAX)
         reached = "n/a" if track.target is None else val_loss <= track.target
-        print0(f"result track:{args.track} residual:{args.residual} trial:{trial} seed:{args.seed}"
+        print0(f"result track:{args.track} residual:{args.residual} model:{model_name} trial:{trial} seed:{args.seed}"
                + f" val_loss:{val_loss:.5f} target:{track.target} reached:{reached} train_time:{training_time:.3f}s"
                + f" steps:{step} {limit} record_run:{record_run} peak_mem:{peak_mem.item() / 2**30:.1f}GiB",
                console=True)
