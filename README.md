@@ -155,8 +155,9 @@ The run log records the full command line and prints the `steps` and `lr` actual
   and weight decay of the residual's own parameters (`optim_groups`).
 - **Execution.** `--microbatch`, `--checkpoint` and `--compile` change speed and memory, not the math.
 
-**Not allowed:** changing what the sublayers compute, e.g. value residuals or attention over earlier layers' keys
-and values (MoDA). The reference `Residual` must be expressible with black-box sublayers.
+**Not supported yet:** methods that change what the sublayers compute, e.g. value residuals or attention over
+earlier layers' keys and values (MoDA). For now, the reference `Residual` must be expressible with black-box
+sublayers.
 
 **Constraints:**
 - In the reference `Residual`, sublayers are black boxes. It calls each one exactly once per forward, in order,
