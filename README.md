@@ -3,7 +3,7 @@
 
 This repository hosts the *DepthDash* speedrun, in which we (collaboratively|competitively) search for the fastest residual connection design to use 8 NVIDIA H100 GPUs to train a *deep-narrow* language model that attains targeted cross-entropy loss on the FineWeb validation set.
 
-[DepthBench](https://arxiv.org/abs/2609.32534) shows that residual connections are the key to depth scaling. So we build DepthDash on the [Modded-NanoGPT speedrun](https://github.com/KellerJordan/modded-nanogpt), with timing conventions from [Parameter Golf](https://github.com/openai/parameter-golf), but with a deeper and narrower backbone.
+[DepthBench](https://arxiv.org/abs/2609.32534) shows that depth can serve as a scaling axis if your residuals let it be. So we build DepthDash on the [Modded-NanoGPT speedrun](https://github.com/KellerJordan/modded-nanogpt), with timing conventions from [Parameter Golf](https://github.com/openai/parameter-golf), but with a much more deeper and narrower backbone.
 
 The data, backbone, init and optimizer are frozen. A submission changes only the residual path, with system and kernel optimizations allowed, and picks its step count and learning rate.
 
