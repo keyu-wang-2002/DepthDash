@@ -11,12 +11,15 @@ The data, backbone, init and optimizer are frozen. A submission changes only the
 
 Every track has nearly the same backbone (12·L·d² = 85–88M parameters, FineWeb, GPT-2 tokens, 524,288 tokens/step,
 sequence length 1024). The tracks differ only in aspect ratio d/L. `reference` is the setting used in Modded-NanoGPT.
+Tracks 1 and 2 change only the residual connections. Track 3 starts from the deep shape and target, but like
+Modded-NanoGPT's main track, anything goes (see [Rules](#rules)).
 
 | Track | Shape | Aspect ratio | Heads × dim | Backbone | Total | Target val loss |
 | - | - | - | - | - | - | - |
 | `reference` (not scored) | L12 d768 | 64 | 6 × 128 | 84.93M | 162.35M | 3.28 |
 | **Track 1: `deep`** | L28 d512 | 18.3 | 8 × 64 | 88.08M | 139.80M | TBD |
 | **Track 2: `extreme_deep`** | L48 d384 | 8 | 6 × 64 | 84.93M | 123.82M | TBD |
+| **Track 3: `open`** | L28 d512 (start) | 18.3 | 8 × 64 | 88.08M | 139.80M | same as `deep` |
 
 
 ## Quickstart
@@ -126,6 +129,8 @@ The run log records the full command line and prints the `steps` and `lr` actual
 
 ## Rules
 
+### Tracks 1 and 2: residual connections only
+
 **Frozen:** `train_gpt.py`, `model.py`, `tracks.py`, `check_equivalence.py`. That covers the data, the batch size
 (524,288 tokens/step), the backbone, its init, the optimizers, the lr schedule and the evaluation.
 
@@ -140,7 +145,7 @@ The run log records the full command line and prints the `steps` and `lr` actual
 
 **Not supported yet:** methods that change what the sublayers compute, e.g. value residuals or attention over
 earlier layers' keys and values (MoDA). For now, the reference `Residual` must be expressible with black-box
-sublayers.
+sublayers. Such methods can compete in Track 3.
 
 **Constraints:**
 - In the reference `Residual`, sublayers are black boxes. It calls each one exactly once per forward, in order,
@@ -163,6 +168,35 @@ To submit, add `records/<track>/<YYYY-MM-DD>_<Name>/` with:
 The log embeds the entry file, every module it imported from its directory, and any `.cu/.cuh/.cpp/.h` sources
 there.
 
+### Track 3: open
+
+Like Modded-NanoGPT's main track: train a deep-narrow model to the `deep` target as fast as you can, and change
+anything you like. That includes the architecture (value residuals, MoDA, attention and MLP variants, norms,
+init), the optimizer and its schedule, the batch size and sequence length, kernels and precision (e.g. FP8).
+
+**Keep:**
+- **Deep and narrow:** at least 28 transformer blocks and a residual stream width of at most 512.
+- **Data and evaluation:** the same train and validation token streams, and the same val loss, i.e.
+  cross-entropy on the 10,485,760 FineWeb validation tokens.
+- **Timing:** 8× H100 SXM. Compile warmup and validation stay off the clock, and the run ends with the `result`
+  line.
+- **Fair play:** nothing may depend on val loss, and training never reads validation data. Do not cherry-pick
+  seeds.
+
+**Score:** as in Tracks 1 and 2. It is the `train_time` of runs whose mean final val loss is at or below the
+`deep` target at p < 0.01. Since the starting shape and the target are the same, Track 3 times compare directly
+with Track 1 times.
+
+To submit, copy `train_gpt.py`, `model.py`, `tracks.py` (and whatever else you need) into
+`records/open/<YYYY-MM-DD>_<Name>/`, change them as you like, and run from the repository root:
+
+```bash
+torchrun --standalone --nproc_per_node=8 records/open/<YYYY-MM-DD>_<Name>/train_gpt.py --track open --steps N
+```
+
+Add the logs of all seeds and a short README with the time, the mean val loss and the p-value against the
+target. The log embeds your `train_gpt.py`, `model.py` and `tracks.py`; make it log any other files you add too.
+
 ## Leaderboard
 
 ### Track 1: deep (L28 d512)
@@ -173,6 +207,11 @@ there.
 ### Track 2: extreme_deep (L48 d384)
 
 | # | Time | Val loss (mean, n) | Steps | Residual | Date | Log | Contributors |
+| - | - | - | - | - | - | - | - |
+
+### Track 3: open (from L28 d512)
+
+| # | Time | Val loss (mean, n) | Steps | Description | Date | Log | Contributors |
 | - | - | - | - | - | - | - | - |
 
 ## Layout
@@ -197,7 +236,8 @@ DepthDash/
 │       └── mhc.py             # Liger-Kernel mHC
 ├── records/                   # submissions, per track
 │   ├── deep/
-│   └── extreme_deep/
+│   ├── extreme_deep/
+│   └── open/
 ├── data/                      # FineWeb 10B (GPT-2 tokens) downloader
 ├── run.sh                     # torchrun launcher for 8 GPUs
 └── requirements.txt
