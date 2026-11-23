@@ -1,32 +1,23 @@
 # DepthDash
 
-A time-to-target speedrun for deep-narrow Transformers where **only the residual connections may change**.
-The format follows the [NanoGPT speedrun](https://github.com/KellerJordan/modded-nanogpt), with timing
-conventions from [Parameter Golf](https://github.com/openai/parameter-golf). The question comes from
-[DepthBench](https://arxiv.org/abs/2609.32534).
 
-DepthBench shows that with Pre-LN, making a fixed-size model deeper and narrower stops paying off.
-Some residual designs (HC, Full AttnRes) keep improving. DepthDash turns that into a contest.
-The data, backbone, init and optimizer are frozen. A submission changes the residual path, chooses its step
-count and learning rate, and competes to reach the track's target val loss in the least training time on 8×H100.
+This repository hosts the *DepthDash* speedrun, in which we (collaboratively|competitively) search for the fastest residual connection design to use 8 NVIDIA H100 GPUs to train a *deep-narrow* language model that attains targeted cross-entropy loss on the FineWeb validation set.
+
+[DepthBench](https://arxiv.org/abs/2609.32534) shows that residual connections are the key to depth scaling. So we build DepthDash on the [Modded-NanoGPT speedrun](https://github.com/KellerJordan/modded-nanogpt), with timing conventions from [Parameter Golf](https://github.com/openai/parameter-golf), but with a deeper and narrower backbone.
+
+The data, backbone, init and optimizer are frozen. A submission changes only the residual path, with system and kernel optimizations allowed, and picks its step count and learning rate.
 
 ## Tracks
 
 Every track has nearly the same backbone (12·L·d² = 85–88M parameters, FineWeb, GPT-2 tokens, 524,288 tokens/step,
-sequence length 1024). The tracks differ only in aspect ratio d/L.
+sequence length 1024). The tracks differ only in aspect ratio d/L. `reference` is the setting used in Modded-NanoGPT.
 
-| Track | Shape | Aspect ratio | Heads × dim | Backbone | Target val loss |
-| - | - | - | - | - | - |
-| `reference` (not scored) | L12 d768 | 64 | 6 × 128 | 84.93M | 3.28 |
-| **Track 1: `deep`** | L28 d512 | 18.3 | 8 × 64 | 88.08M | TBD |
-| **Track 2: `extreme_deep`** | L48 d384 | 8 | 6 × 64 | 84.93M | TBD |
+| Track | Shape | Aspect ratio | Heads × dim | Backbone | Total | Target val loss |
+| - | - | - | - | - | - | - |
+| `reference` (not scored) | L12 d768 | 64 | 6 × 128 | 84.93M | 162.35M | 3.28 |
+| **Track 1: `deep`** | L28 d512 | 18.3 | 8 × 64 | 88.08M | 139.80M | TBD |
+| **Track 2: `extreme_deep`** | L48 d384 | 8 | 6 × 64 | 84.93M | 123.82M | TBD |
 
-Backbone counts the attention and MLP weight matrices that Muon trains, exactly 12·L·d². `deep` uses the round
-shape L28 d512, which is 3.7% larger than the other two (L27 d512 would match exactly).
-The train log prints `backbone_params`, `residual_params` and `total_params` for every run.
-
-`reference` is upstream track 3's baseline shape. Pre-LN should reproduce upstream's 3.28 in 3250 steps there,
-which makes it a regression check for the trainer.
 
 ## Quickstart
 
@@ -35,7 +26,11 @@ All runs use one node with 8× NVIDIA H100 SXM.
 ```bash
 pip install -r requirements.txt
 python data/cached_fineweb10B.py 40          # 4B training tokens + the validation shard
-./run.sh --track deep --residual baselines/hc.py --steps 3000 --lr 0.025 --seed 0
+
+# a simple example: Pre-LN, written as plain PyTorch math
+./run.sh --track deep --residual baselines/preln.py --steps 3000 --lr 0.025 --seed 0
+# --model overrides the math version with a rewritten model file, for kernel and system speedups
+./run.sh --track deep --residual baselines/preln.py --model baselines/fast/preln.py --steps 3000 --lr 0.025 --seed 0
 ```
 
 A run proceeds like this:
@@ -99,18 +94,6 @@ python check_equivalence.py --track deep --residual <dir>/residual.py --model <d
 ./run.sh --track deep --residual <dir>/residual.py --model <dir>/fast_model.py --steps N --lr LR --seed 0
 ```
 
-The check runs both on one GPU in fp32 (TF32 off) from the same weights, at the init and at a few random draws,
-and compares every gradient. A correct implementation differs by ~1e-6 there. The tolerances (1e-4 for the
-gradients overall, 1e-2 per tensor) are far above that, so a correct fast implementation passes, while a wrong
-scale, a missing transpose or a detached input fails. Differences far below the tolerances, such as a changed
-epsilon, can slip through. That is fine: the rules are a gentlemen's agreement, and the check is there to catch
-honest mistakes. For it to work, a fast implementation must also run in fp32, so write kernels for the input
-dtype rather than hard-coding bf16.
-
-[`baselines/fast/`](baselines/fast) has fast implementations of the baselines:
-- `attnres.py` and `block_attnres.py` use DepthBench's fused Triton kernel;
-- `mhc.py` uses Liger-Kernel;
-- `preln.py` is a minimal example that folds each pre-norm gain into the next sublayer's input projections.
 
 ### Steps and learning rate
 
@@ -194,16 +177,30 @@ there.
 
 ## Layout
 
-```
-train_gpt.py     frozen: data loader, Muon, optimizer groups, init, warmup, timed training loop, validation, logging
-model.py         frozen: RMSNorm, attention, MLP, GPT (embed -> residual -> head)
-tracks.py        frozen: track shapes, calibrated step counts and targets
-check_equivalence.py  frozen: checks that a fast model (--model) computes the same function as its reference
-baselines/       reference residuals: the plain PyTorch math, one entry file each
-baselines/fast/  fast models with kernels (--model): attnres and block_attnres (Triton kernel from
-                 DepthBench), mhc (Liger-Kernel), preln (a minimal example)
-records/         submissions per track
-data/            FineWeb 10B (GPT-2 tokens) downloader
+```text
+DepthDash/
+├── train_gpt.py               # frozen: data loader, Muon, optimizer groups, init, warmup, timed loop, validation, logging
+├── model.py                   # frozen: RMSNorm, attention, MLP, GPT (embed -> residual -> head)
+├── tracks.py                  # frozen: track shapes, step counts and targets
+├── check_equivalence.py       # frozen: checks that a fast model (--model) computes the same function as its reference
+├── baselines/                 # reference residuals: the plain PyTorch math, one entry file each
+│   ├── preln.py               # Pre-LN, also the documented interface
+│   ├── hc.py                  # Hyper-Connections
+│   ├── mhc.py                 # Manifold-constrained Hyper-Connections
+│   ├── attnres.py             # Full Attention Residuals
+│   ├── block_attnres.py       # Block Attention Residuals
+│   └── fast/                  # fast models with kernels (--model)
+│       ├── preln.py           # minimal example: pre-norm gains folded into the next matmul
+│       ├── attnres.py         # fused Triton kernel
+│       ├── block_attnres.py   # fused Triton kernel
+│       ├── attnres_kernel.py  # the AttnRes Triton kernel, from DepthBench
+│       └── mhc.py             # Liger-Kernel mHC
+├── records/                   # submissions, per track
+│   ├── deep/
+│   └── extreme_deep/
+├── data/                      # FineWeb 10B (GPT-2 tokens) downloader
+├── run.sh                     # torchrun launcher for 8 GPUs
+└── requirements.txt
 ```
 
 ## Acknowledgements
@@ -211,6 +208,3 @@ data/            FineWeb 10B (GPT-2 tokens) downloader
 - **Trainer and scoring:** descends from modded-nanogpt's track 3 (`train_gpt_simple.py`); time-to-target
   scoring follows its main track.
 - **Timing conventions:** the off-the-clock compile warmup and the fixed-time `--budget` mode follow Parameter Golf.
-- **HC/mHC:** the implementations come from [nanogpt-lab](https://github.com/aryagxr/nanogpt-lab).
-- **Upstream history:** modded-nanogpt's history, including its tracks 1–3 and all their records, remains in
-  this repository's git history.
