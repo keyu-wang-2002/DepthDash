@@ -11,15 +11,15 @@ The data, backbone, init and optimizer are frozen. A submission changes only the
 
 Every track has nearly the same backbone (12·L·d² = 85–88M parameters, FineWeb, GPT-2 tokens, 524,288 tokens/step,
 sequence length 1024). The tracks differ only in aspect ratio d/L. `reference` is the setting used in Modded-NanoGPT.
-Tracks 1 and 2 change only the residual connections. Track 3 starts from the deep shape and target, but like
-Modded-NanoGPT's main track, anything goes (see [Rules](#rules)).
+Tracks 1 and 2 change only the residual connections. Track 3 keeps the deep backbone and target, but otherwise,
+like Modded-NanoGPT's main track, anything goes within a 5% parameter budget (see [Rules](#rules)).
 
 | Track | Shape | Aspect ratio | Heads × dim | Backbone | Total | Target val loss |
 | - | - | - | - | - | - | - |
 | `reference` (not scored) | L12 d768 | 64 | 6 × 128 | 84.93M | 162.35M | 3.28 |
 | **Track 1: `deep`** | L28 d512 | 18.3 | 8 × 64 | 88.08M | 139.80M | TBD |
 | **Track 2: `extreme_deep`** | L48 d384 | 8 | 6 × 64 | 84.93M | 123.82M | TBD |
-| **Track 3: `open`** | L28 d512 (start) | 18.3 | 8 × 64 | 88.08M | 139.80M | same as `deep` |
+| **Track 3: `open`** | L28 d512 | 18.3 | 8 × 64 | 88.08M | 139.80M | same as `deep` |
 
 
 ## Quickstart
@@ -170,12 +170,16 @@ there.
 
 ### Track 3: open
 
-Like Modded-NanoGPT's main track: train a deep-narrow model to the `deep` target as fast as you can, and change
-anything you like. That includes the architecture (value residuals, MoDA, attention and MLP variants, norms,
-init), the optimizer and its schedule, the batch size and sequence length, kernels and precision (e.g. FP8).
+Like Modded-NanoGPT's main track: train the `deep` backbone to the `deep` target as fast as you can, and change
+anything else you like. That includes the residual path and anything added around the backbone (value residuals,
+MoDA, gates, extra embeddings), how the attention and MLP compute (norms, activations, attention patterns), the
+init, the optimizer and its schedule, the batch size and sequence length, kernels and precision (e.g. FP8).
 
 **Keep:**
-- **Deep and narrow:** at least 28 transformer blocks and a residual stream width of at most 512.
+- **The backbone:** as in `deep`: 28 blocks with a residual stream width of 512, each with one attention
+  (8 heads × 64, matrices 512 × 512 for Q, K, V and the output) and one MLP (512 → 2048 → 512).
+- **The parameter budget:** at most 5% more parameters in total than `deep` with Pre-LN, i.e.
+  ≤ 146,790,739 (139,800,704 + 5%), counting the embedding, the head and everything you add.
 - **Data and evaluation:** the same train and validation token streams, and the same val loss, i.e.
   cross-entropy on the 10,485,760 FineWeb validation tokens.
 - **Timing:** 8× H100 SXM. Compile warmup and validation stay off the clock, and the run ends with the `result`
@@ -184,7 +188,7 @@ init), the optimizer and its schedule, the batch size and sequence length, kerne
   seeds.
 
 **Score:** as in Tracks 1 and 2. It is the `train_time` of runs whose mean final val loss is at or below the
-`deep` target at p < 0.01. Since the starting shape and the target are the same, Track 3 times compare directly
+`deep` target at p < 0.01. Since the backbone and the target are the same, Track 3 times compare directly
 with Track 1 times.
 
 To submit, copy `train_gpt.py`, `model.py`, `tracks.py` (and whatever else you need) into
@@ -209,7 +213,7 @@ target. The log embeds your `train_gpt.py`, `model.py` and `tracks.py`; make it 
 | # | Time | Val loss (mean, n) | Steps | Residual | Date | Log | Contributors |
 | - | - | - | - | - | - | - | - |
 
-### Track 3: open (from L28 d512)
+### Track 3: open (L28 d512)
 
 | # | Time | Val loss (mean, n) | Steps | Description | Date | Log | Contributors |
 | - | - | - | - | - | - | - | - |
@@ -223,17 +227,7 @@ DepthDash/
 ├── tracks.py                  # frozen: track shapes, step counts and targets
 ├── check_equivalence.py       # frozen: checks that a fast model (--model) computes the same function as its reference
 ├── baselines/                 # reference residuals: the plain PyTorch math, one entry file each
-│   ├── preln.py               # Pre-LN, also the documented interface
-│   ├── hc.py                  # Hyper-Connections
-│   ├── mhc.py                 # Manifold-constrained Hyper-Connections
-│   ├── attnres.py             # Full Attention Residuals
-│   ├── block_attnres.py       # Block Attention Residuals
 │   └── fast/                  # fast models with kernels (--model)
-│       ├── preln.py           # minimal example: pre-norm gains folded into the next matmul
-│       ├── attnres.py         # fused Triton kernel
-│       ├── block_attnres.py   # fused Triton kernel
-│       ├── attnres_kernel.py  # the AttnRes Triton kernel, from DepthBench
-│       └── mhc.py             # Liger-Kernel mHC
 ├── records/                   # submissions, per track
 │   ├── deep/
 │   ├── extreme_deep/

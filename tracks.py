@@ -47,6 +47,7 @@ TRACKS = {
     "deep":         Track(num_layers=28, model_dim=512, head_dim=64, steps=None, lr=0.025, target=None, microbatch=64),
     # AR 8, cf. the paper's L=70 (AR 9.14).
     "extreme_deep": Track(num_layers=48, model_dim=384, head_dim=64, steps=None, lr=0.025, target=None, microbatch=64),
-    # Open: anything goes, as in Modded-NanoGPT's main track. The deep shape and target are the starting point.
+    # Open: the deep backbone and target are fixed, the total parameter count may grow by at most 5%;
+    # anything else goes, as in Modded-NanoGPT's main track.
     "open":         Track(num_layers=28, model_dim=512, head_dim=64, steps=None, lr=0.025, target=None, microbatch=64),
 }
