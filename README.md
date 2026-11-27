@@ -19,7 +19,7 @@ like Modded-NanoGPT's main track, anything goes within a 5% parameter budget, an
 | `reference` (not scored) | L12 d768 | 64 | 6 × 128 | 84.93M | 162.35M | 3.28 |
 | **Track 1: `deep`** | L28 d512 | 18.3 | 8 × 64 | 88.08M | 139.80M | 3.336 |
 | **Track 2: `extreme_deep`** | L48 d384 | 8 | 6 × 64 | 84.93M | 123.82M | 3.430 |
-| **Track 3: `open`** | L28 d512 | 18.3 | 8 × 64 | 88.08M | 139.80M | 3.336 |
+| **Track 3: `deep_open`** | L28 d512 | 18.3 | 8 × 64 | 88.08M | 139.80M | 3.336 |
 
 
 ## Leaderboard
@@ -36,7 +36,7 @@ like Modded-NanoGPT's main track, anything goes within a 5% parameter budget, an
 | - | - | - | - | - | - | - | - |
 | 1 | 599.3 s | 3.4291 (5) | 2150 | Pre-LN | 2026-11-27 | [log](records/extreme_deep/2026-11-27_PreLN/) | [keyu-wang-2002](https://github.com/keyu-wang-2002) |
 
-### Track 3: open (L28 d512)
+### Track 3: deep_open (L28 d512)
 
 | # | Time | Val loss (mean, n) | Steps | Description | Date | Log | Contributors |
 | - | - | - | - | - | - | - | - |
@@ -188,7 +188,7 @@ To submit, add `records/<track>/<YYYY-MM-DD>_<Name>/` with:
 The log embeds the entry file, every module it imported from its directory, and any `.cu/.cuh/.cpp/.h` sources
 there.
 
-### Track 3: open
+### Track 3: deep_open
 
 Like Modded-NanoGPT's main track: train the `deep` backbone to the `deep` target as fast as you can, and change
 anything else you like. That includes the residual path and anything added around the backbone (value residuals,
@@ -212,10 +212,10 @@ init, the optimizer and its schedule, the batch size and sequence length, kernel
 with Track 1 times.
 
 To submit, copy `train_gpt.py`, `model.py`, `tracks.py` (and whatever else you need) into
-`records/open/<YYYY-MM-DD>_<Name>/`, change them as you like, and run from the repository root:
+`records/deep_open/<YYYY-MM-DD>_<Name>/`, change them as you like, and run from the repository root:
 
 ```bash
-torchrun --standalone --nproc_per_node=8 records/open/<YYYY-MM-DD>_<Name>/train_gpt.py --track open --steps N
+torchrun --standalone --nproc_per_node=8 records/deep_open/<YYYY-MM-DD>_<Name>/train_gpt.py --track deep_open --steps N
 ```
 
 Add the logs of all seeds and a short README with the time, the mean val loss and the p-value against the
@@ -236,7 +236,7 @@ DepthDash/
 ├── records/                   # submissions, per track
 │   ├── deep/
 │   ├── extreme_deep/
-│   └── open/
+│   └── deep_open/
 ├── data/                      # FineWeb 10B (GPT-2 tokens) downloader
 ├── run.sh                     # torchrun launcher for 8 GPUs
 └── requirements.txt
