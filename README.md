@@ -12,7 +12,7 @@ The data, backbone, init and optimizer are frozen. A submission changes only the
 Every track has nearly the same backbone (12·L·d² = 85–88M parameters, FineWeb, GPT-2 tokens, 524,288 tokens/step,
 sequence length 1024). The tracks differ only in aspect ratio d/L. `reference` is the setting used in Modded-NanoGPT.
 Tracks 1 and 2 change only the residual connections. Track 3 keeps the deep backbone and target, but otherwise,
-like Modded-NanoGPT's main track, anything goes within a 5% parameter budget (see [Rules](#rules)).
+like Modded-NanoGPT's main track, anything goes within a 5% parameter budget, and yes, optimizer co-design is allowed (see [Rules](#rules)).
 
 | Track | Shape | Aspect ratio | Heads × dim | Backbone | Total | Target val loss |
 | - | - | - | - | - | - | - |
