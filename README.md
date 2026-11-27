@@ -18,7 +18,7 @@ like Modded-NanoGPT's main track, anything goes within a 5% parameter budget, an
 | - | - | - | - | - | - | - |
 | `reference` (not scored) | L12 d768 | 64 | 6 × 128 | 84.93M | 162.35M | 3.28 |
 | **Track 1: `deep`** | L28 d512 | 18.3 | 8 × 64 | 88.08M | 139.80M | 3.336 |
-| **Track 2: `extreme_deep`** | L48 d384 | 8 | 6 × 64 | 84.93M | 123.82M | TBD |
+| **Track 2: `extreme_deep`** | L48 d384 | 8 | 6 × 64 | 84.93M | 123.82M | 3.430 |
 | **Track 3: `open`** | L28 d512 | 18.3 | 8 × 64 | 88.08M | 139.80M | 3.336 |
 
 
@@ -34,6 +34,7 @@ like Modded-NanoGPT's main track, anything goes within a 5% parameter budget, an
 
 | # | Time | Val loss (mean, n) | Steps | Residual | Date | Log | Contributors |
 | - | - | - | - | - | - | - | - |
+| 1 | 599.3 s | 3.4291 (5) | 2150 | Pre-LN | 2026-11-27 | [log](records/extreme_deep/2026-11-27_PreLN/) | [keyu-wang-2002](https://github.com/keyu-wang-2002) |
 
 ### Track 3: open (L28 d512)
 
