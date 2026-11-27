@@ -22,6 +22,25 @@ like Modded-NanoGPT's main track, anything goes within a 5% parameter budget, an
 | **Track 3: `open`** | L28 d512 | 18.3 | 8 × 64 | 88.08M | 139.80M | 3.336 |
 
 
+## Leaderboard
+
+### Track 1: deep (L28 d512)
+
+| # | Time | Val loss (mean, n) | Steps | Residual | Date | Log | Contributors |
+| - | - | - | - | - | - | - | - |
+| 1 | 596.9 s | 3.3348 (5) | 2850 | Pre-LN | 2026-11-27 | [log](records/deep/2026-11-27_PreLN/) | [keyu-wang-2002](https://github.com/keyu-wang-2002) |
+
+### Track 2: extreme_deep (L48 d384)
+
+| # | Time | Val loss (mean, n) | Steps | Residual | Date | Log | Contributors |
+| - | - | - | - | - | - | - | - |
+
+### Track 3: open (L28 d512)
+
+| # | Time | Val loss (mean, n) | Steps | Description | Date | Log | Contributors |
+| - | - | - | - | - | - | - | - |
+| 1 | 596.9 s | 3.3348 (5) | 2850 | Pre-LN | 2026-11-27 | [log](records/deep/2026-11-27_PreLN/) | [keyu-wang-2002](https://github.com/keyu-wang-2002) |
+
 ## Quickstart
 
 All runs use one node with 8× NVIDIA H100 SXM.
@@ -201,24 +220,7 @@ torchrun --standalone --nproc_per_node=8 records/open/<YYYY-MM-DD>_<Name>/train_
 Add the logs of all seeds and a short README with the time, the mean val loss and the p-value against the
 target. The log embeds your `train_gpt.py`, `model.py` and `tracks.py`; make it log any other files you add too.
 
-## Leaderboard
 
-### Track 1: deep (L28 d512)
-
-| # | Time | Val loss (mean, n) | Steps | Residual | Date | Log | Contributors |
-| - | - | - | - | - | - | - | - |
-| 1 | 596.9 s | 3.3348 (5) | 2850 | Pre-LN | 2026-11-27 | [log](records/deep/2026-11-27_PreLN/) | [keyu-wang-2002](https://github.com/keyu-wang-2002) |
-
-### Track 2: extreme_deep (L48 d384)
-
-| # | Time | Val loss (mean, n) | Steps | Residual | Date | Log | Contributors |
-| - | - | - | - | - | - | - | - |
-
-### Track 3: open (L28 d512)
-
-| # | Time | Val loss (mean, n) | Steps | Description | Date | Log | Contributors |
-| - | - | - | - | - | - | - | - |
-| 1 | 596.9 s | 3.3348 (5) | 2850 | Pre-LN | 2026-11-27 | [log](records/deep/2026-11-27_PreLN/) | [keyu-wang-2002](https://github.com/keyu-wang-2002) |
 
 ## Layout
 
