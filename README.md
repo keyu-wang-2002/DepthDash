@@ -217,6 +217,7 @@ target. The log embeds your `train_gpt.py`, `model.py` and `tracks.py`; make it 
 ### Track 3: open (L28 d512)
 
 | # | Time | Val loss (mean, n) | Steps | Description | Date | Log | Contributors |
+| - | - | - | - | - | - | - | - |
 | 1 | 596.9 s | 3.3348 (5) | 2850 | Pre-LN | 2026-11-27 | [log](records/deep/2026-11-27_PreLN/) | [keyu-wang-2002](https://github.com/keyu-wang-2002) |
 
 ## Layout
